@@ -1,0 +1,244 @@
+#include<vector>
+#include <iostream>
+#include<random> 
+#include<ctime>
+#include <fstream>  
+#include <sstream> 
+#include"figuri.h"
+#include"passes.h"
+
+using std::vector;
+
+#define EPS (float)1e-5
+#define LR (float)1e-1
+#define TRAINING 30000  
+#define BEGININGS 10
+#define DATA and_train 
+static const std::string GATE = " AND ";
+
+float sigmoidf(float x) { 
+    return 1.f / (1.f + expf(-x)); 
+} 
+
+float or_train[][3] = { {0, 0, 0}, 
+                        {1, 0, 1},
+                        {0, 1, 1},
+                        {1, 1, 1}
+};
+float and_train[][3] = { {0, 0, 0},
+                         {1, 0, 0},
+                         {0, 1, 0},
+                         {1, 1, 1}
+};
+float nand_train[][3] = {{0, 0, 1}, 
+                         {1, 0, 1}, 
+                         {0, 1, 1}, 
+                         {1, 1, 0} 
+};
+float xor_train[][3] = { {0.f, 0.f, 0.f},
+                         {1.f, 0.f, 1.f}, 
+                         {0.f, 1.f, 1.f}, 
+                         {1.f, 1.f, 0.f}
+};
+const int size = sizeof(or_train) / sizeof(or_train[0]);   
+
+float rand_float() {
+    return (float)rand() / (float)RAND_MAX; 
+}
+void init_parametres(float weights1[][2], float weights2[], float bias[]) {
+    srand(time(0)); 
+    for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < 2; j++) {
+            weights1[i][j] = rand_float()*10-5;
+        }
+    }
+
+    for (int i = 0; i < 2; i++) {
+        weights2[i] = rand_float() * 10 - 5;
+    }
+
+    for (int i = 0; i < 3; i++) {
+        bias[i] = rand_float() * 10 - 5; 
+    }
+}
+
+float forward(float input[], float weights1[][2], float weights2[], float bias[]) {
+
+    float a=0.0f; 
+    float b=0.0f; 
+
+    for (int i = 0; i < 2; i++) {
+        a += input[i] * weights1[i][0]; 
+    }
+    a = sigmoidf(a+bias[0]);
+
+    for (int i = 0; i < 2; i++) { 
+        b += input[i] * weights1[i][1]; 
+    }
+    b = sigmoidf(b+bias[1]);
+
+    return sigmoidf(a * weights2[0] + b * weights2[1] + bias[2]); 
+}
+
+float costf(float weights1[][2], float weights2[], float bias[]) {
+
+    float dif = 0.0f;
+    for (int i = 0; i < size; i ++) {
+        float input[2];
+        input[0] = DATA[i][0]; 
+        input[1] = DATA[i][1]; 
+        float outp = forward(input, weights1, weights2, bias); 
+        float d = outp - DATA[i][2];   
+        dif += d * d;
+    }
+    dif /= size; 
+    return dif;
+}
+
+float updatem(float weights1[][2], float weights2[], float bias[]) {       
+    float c = costf(weights1, weights2, bias);
+    float w1[2][2];
+    float w2[2];
+    float b[3];
+
+    for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < 2; j++) {
+            w1[i][j] = weights1[i][j];
+        }
+    }
+    for (int i = 0; i < 2; i++) {
+            w2[i] = weights2[i];
+
+    }
+    for (int i = 0; i < 3; i++) {
+        b[i] = bias[i];
+    }
+ 
+    for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < 2; j++) {
+            float original1 = w1[i][j]; 
+            w1[i][j] += EPS;   
+            float gradient = (costf(w1, weights2, bias) - c) / EPS; 
+            w1[i][j] = original1; 
+            weights1[i][j] -= LR * gradient; 
+        }
+    }
+
+    for (int i = 0; i < 2; i++) { 
+        float original2 = w2[i];
+        w2[i] += EPS;
+        float gradient2 = (costf(w1, w2, bias) - c) / EPS;
+        w2[i] = original2;
+        weights2[i] -= LR * gradient2;
+    }
+    
+    for (int i = 0; i < 3; i++) {
+        float original3 = b[i]; 
+        float gradient3 = (costf(w1, w2, b) - c) / EPS;
+        b[i] = original3;
+        bias[i] -= LR * EPS;  
+    } 
+    return c; 
+}
+
+float trainm (float weights1[][2], float weights2[], float bias[]) {  
+
+    float cost;
+    for (int i = 0; i < TRAINING; i++) {
+        cost = updatem(weights1, weights2, bias);   
+        std::cout << "Lost:" << cost << "\n";
+        //updatem(weights1, weights2, bias);             
+    }
+    return cost;
+}
+
+void save_as_txt(int changeIndex, float weights1[][2], float weights2[], float bias[]) {
+    // Dynamically generate a filename using the change index
+    std::stringstream filename; 
+    filename << "weights_biases" << changeIndex << ".txt";
+
+    // Open the file for writing 
+    std::ofstream outfile(filename.str());
+
+    if (!outfile) {
+        std::cerr << "Error opening file: " << filename.str() << std::endl;
+        return;
+    }
+    // Write the 2D array to the file
+    outfile << "Weights 1 :\n";
+    for (int i = 0; i < 2; ++i) {
+        for (int j = 0; j < 2; ++j) {
+            outfile << weights1[i][j] << " ";
+        }
+        outfile << std::endl;  // Newline after each row of the 2D array  
+    }
+    // Write the first 1D array to the file
+    outfile << "Weights 2 :\n";
+    for (int i = 0; i < 2; ++i) {
+        outfile << weights2[i] << " ";
+    }
+    outfile << std::endl;  // Newline after 1D array 1
+
+    outfile << "Bias :\n";
+    // Write the second 1D array to the file
+    for (int i = 0; i < 3; ++i) { 
+        outfile << bias[i] << " "; 
+    }
+    outfile << std::endl;  // Newline after 1D array 2
+    // Close the file
+    outfile.close();
+}
+
+void epoch(float weights1[][2], float weights2[], float bias[],vector<float>&loss) { 
+
+    int n_file = 0;
+    for (int i = 0; i < BEGININGS; i++) {
+        float l = trainm(weights1, weights2, bias);
+        loss.push_back(l);
+        save_as_txt(++n_file, weights1, weights2, bias);
+        init_parametres(weights1, weights2, bias);
+    }
+}
+
+void best_start(vector<float>& loss) {   
+
+    auto n = std::min_element(loss.begin(), loss.end()); 
+    auto min_indx = std::distance(loss.begin(), n); 
+
+    std::cout << "Min loss is at indx :" << min_indx << " min loss :" << loss[min_indx] << std::endl; 
+    std::cout << "Search for file #:" << min_indx + 1 << std::endl; 
+
+    for (int i = 0; i < loss.size(); i++) {
+        std::cout << "Loss[" << i << "] = " << loss[i] << std::endl; 
+    }
+}
+
+void test_model(float weights1[][2], float weights2[], float bias[]) {  
+    for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < 2; j++) {
+            float inp[2];
+            inp[0] = (float)i;
+            inp[1] = (float)j;
+            std::cout << i <<  GATE  << j << " = " << forward(inp, weights1, weights2, bias) << std::endl; 
+        }
+    }
+}
+
+int main() 
+{
+    //float weights1[2][2]; 
+   // float weights2[2];   
+   // float bias[3];     
+   // init_parametres(weights1, weights2, bias);   
+  
+   // vector<float> loss;  
+
+    //epoch(weights1,weights2,bias,loss);  
+    //best_start(loss);  
+    
+       float w1[2][2] = {{(float)3.36543 ,(float)-2.53551},{(float)3.11656 ,(float)-2.62035 }};
+       float w2[2]={ (float)3.8001 ,(float)-8.68466 };
+       float b[3]={ (float)-4.68894 ,(float)3.72074 ,(float)2.07274 };
+       test_model(w1, w2, b);  
+       std::cin.get();
+}
